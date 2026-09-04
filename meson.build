@@ -90,8 +90,7 @@ if host_arch == 'arm'
   endif
 endif
 
-if host_os_family == 'darwin'
-  have_ptrauth_src = '''
+have_ptrauth_src = '''
 #ifdef __clang__
 # if __has_feature (ptrauth_calls)
 #  define HAVE_PTRAUTH 1
@@ -102,13 +101,10 @@ if host_os_family == 'darwin'
 # error Pointer authentication not supported
 #endif
 '''
-  have_ptrauth = cc.compiles(have_ptrauth_src, name: 'pointer authentication')
+have_ptrauth = cc.compiles(have_ptrauth_src, name: 'pointer authentication')
 
-  if host_arch == 'arm64' and have_ptrauth
-    host_abi = 'arm64e'
-  endif
-else
-  have_ptrauth = false
+if host_os_family == 'darwin' and host_arch == 'arm64' and have_ptrauth
+  host_abi = 'arm64e'
 endif
 
 if cc.sizeof('void *') == 8
@@ -397,13 +393,8 @@ endif
 glib_dep = dependency('glib-2.0', version: glib_version_req, default_options: glib_options)
 gobject_dep = dependency('gobject-2.0')
 gio_os_package_name = (host_os_family == 'windows') ? 'gio-windows-2.0' : 'gio-unix-2.0'
-if have_gumjs
-  gio_dep = dependency('gio-2.0')
-  gio_os_package_dep = dependency(gio_os_package_name)
-else
-  gio_dep = disabler()
-  gio_os_package_dep = disabler()
-endif
+gio_dep = dependency('gio-2.0')
+gio_os_package_dep = dependency(gio_os_package_name)
 
 frida_glib_probe = '''
 #include <glib.h>
@@ -443,6 +434,20 @@ if lzma_dep.found()
   cdata.set('HAVE_LZMA', 1)
   extra_requires_private += 'liblzma'
 endif
+
+libtcc_dep = dependency('libtcc',
+  required: (host_abi in ['arm', 'arm64'] and host_machine.endian() == 'little')
+            or (host_abi not in ['arm', 'arm64'] and host_arch not in ['mips', 'mips64']),
+  default_options: ['default_library=static'],
+)
+cdata.set('HAVE_TINYCC', libtcc_dep.found())
+
+json_glib_dep = dependency('json-glib-1.0', default_options: [
+  'default_library=static',
+  'introspection=disabled',
+  'gtk_doc=disabled',
+  'tests=false',
+])
 
 if glib_dep.type_name() == 'internal'
   have_shared_glib = not static
@@ -620,14 +625,6 @@ if have_gumpp
 endif
 
 gumjs_extra_requires = []
-if have_gumjs or have_inspector
-  json_glib_dep = dependency('json-glib-1.0', default_options: [
-    'default_library=static',
-    'introspection=disabled',
-    'gtk_doc=disabled',
-    'tests=false',
-  ])
-endif
 if have_inspector
   libsoup_dep = dependency('libsoup-3.0',
     required: have_inspector,
@@ -697,13 +694,6 @@ if have_gumjs
   endif
 
   gumjs_extra_requires += [gio_os_package_name]
-
-  libtcc_dep = dependency('libtcc',
-    required: (host_abi in ['arm', 'arm64'] and host_machine.endian() == 'little')
-              or (host_abi not in ['arm', 'arm64'] and host_arch not in ['mips', 'mips64']),
-    default_options: ['default_library=static'],
-  )
-  cdata.set('HAVE_TINYCC', libtcc_dep.found())
 
   if host_arch == 'arm' and cc.has_function('__aeabi_memmove')
     cdata.set('HAVE_AEABI_MEMORY_BUILTINS', 1)

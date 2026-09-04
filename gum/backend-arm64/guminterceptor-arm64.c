@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2014-2026 Ole André Vadla Ravnås <oleavr@nowsecure.com>
  * Copyright (C) 2022-2025 Francesco Tamagni <mrmacete@protonmail.ch>
+ * Copyright (C) 2026 inforcqb <fanjiawei080615@qq.com>
  *
  * Licence: wxWindows Library Licence, Version 3.1
  */
@@ -993,7 +994,7 @@ _gum_interceptor_backend_create_trampoline (GumInterceptorBackend * self,
     resume_at = gum_sign_code_address (
         GUM_ADDRESS (function_address) + reloc_bytes);
     gum_arm64_writer_put_ldr_reg_address (aw, data->scratch_reg, resume_at);
-    gum_arm64_writer_put_br_reg (aw, data->scratch_reg);
+    gum_arm64_writer_put_jmp_reg (aw, data->scratch_reg);
   }
 
   gum_arm64_writer_flush (aw);
@@ -1067,12 +1068,14 @@ _gum_interceptor_backend_activate_trampoline (GumInterceptorBackend * self,
 {
   GumArm64Writer * aw = &self->writer;
   GumArm64FunctionContextData * data = GUM_FCDATA (ctx);
-  GumAddress on_enter;
+  GumAddress on_enter, on_enter_bare;
 
   if (ctx->type == GUM_INTERCEPTOR_TYPE_FAST)
     on_enter = GUM_ADDRESS (ctx->replacement_function);
   else
     on_enter = GUM_ADDRESS (ctx->on_enter_trampoline);
+  on_enter_bare =
+      GUM_ADDRESS (gum_strip_code_pointer (GSIZE_TO_POINTER (on_enter)));
 
 #ifdef HAVE_DARWIN
   if (ctx->grafted_hook != NULL)
@@ -1116,15 +1119,16 @@ _gum_interceptor_backend_activate_trampoline (GumInterceptorBackend * self,
     switch (data->redirect_code_size)
     {
       case 4:
-        gum_arm64_writer_put_b_imm (aw, on_enter);
+        gum_arm64_writer_put_b_imm (aw, on_enter_bare);
         break;
       case 8:
-        gum_arm64_writer_put_adrp_reg_address (aw, data->scratch_reg, on_enter);
-        gum_arm64_writer_put_br_reg_no_auth (aw, data->scratch_reg);
+        gum_arm64_writer_put_adrp_reg_address (aw, data->scratch_reg,
+            on_enter_bare);
+        gum_arm64_writer_put_jmp_reg_no_auth (aw, data->scratch_reg);
         break;
       case GUM_INTERCEPTOR_FULL_REDIRECT_SIZE:
         gum_arm64_writer_put_ldr_reg_address (aw, data->scratch_reg, on_enter);
-        gum_arm64_writer_put_br_reg (aw, data->scratch_reg);
+        gum_arm64_writer_put_jmp_reg (aw, data->scratch_reg);
         break;
       default:
         g_assert_not_reached ();
@@ -1312,6 +1316,8 @@ static void
 gum_emit_enter_thunk (GumArm64Writer * aw,
                       arm64_reg scratch_reg)
 {
+  gum_arm64_writer_put_bti (aw);
+
   gum_arm64_writer_put_ldr_reg_reg_offset (aw, ARM64_REG_X17, ARM64_REG_SP, 0);
 
   gum_emit_prolog (aw);
@@ -1337,6 +1343,8 @@ static void
 gum_emit_leave_thunk (GumArm64Writer * aw,
                       arm64_reg scratch_reg)
 {
+  gum_arm64_writer_put_bti (aw);
+
   gum_arm64_writer_put_ldr_reg_reg_offset (aw, ARM64_REG_X17, ARM64_REG_SP, 0);
 
   gum_emit_prolog (aw);
@@ -1425,9 +1433,5 @@ gum_emit_epilog (GumArm64Writer * aw,
 
   gum_arm64_writer_put_ldr_reg_reg_offset_mode (aw, scratch_reg, ARM64_REG_SP,
       16, GUM_INDEX_POST_ADJUST);
-#ifndef HAVE_PTRAUTH
-  gum_arm64_writer_put_ret_reg (aw, scratch_reg);
-#else
-  gum_arm64_writer_put_br_reg (aw, scratch_reg);
-#endif
+  gum_arm64_writer_put_jmp_reg (aw, scratch_reg);
 }

@@ -24,7 +24,9 @@
 # include <mach/mach.h>
 #endif
 
-#ifdef HAVE_MIPS
+#if defined (HAVE_I386)
+# define GUM_INTERCEPTOR_CODE_SLICE_SIZE 512
+#elif defined (HAVE_MIPS)
 # define GUM_INTERCEPTOR_CODE_SLICE_SIZE 1024
 #else
 # define GUM_INTERCEPTOR_CODE_SLICE_SIZE 256
@@ -490,9 +492,12 @@ gum_interceptor_obtain (void)
    * Activate the unwind broker so C++/Objective-C exceptions can propagate
    * through our trampolines. Done outside the lock because the broker's
    * backend re-enters gum_interceptor_obtain () to install its own hooks.
+   * A freestanding target has no such exceptions, and nothing to unwind with.
    */
+#ifndef G_OS_NONE
   if (newly_created)
     interceptor->unwind_broker = gum_unwind_broker_obtain ();
+#endif
 
   return interceptor;
 }
