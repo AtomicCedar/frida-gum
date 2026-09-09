@@ -90,7 +90,7 @@ gum_quick_api_run_prelude (GumQuickApi * self,
   if (source == NULL)
     return;
 
-  name = g_strconcat ("/_frida_", _gum_script_api_get_name (api), ".js", NULL);
+  name = g_strconcat ("/_mhook_", _gum_script_api_get_name (api), ".js", NULL);
 
   result = JS_Eval (ctx, source, strlen (source), name,
       JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_STRICT);
